@@ -1,0 +1,192 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user with organization-based access",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "team", "client"] },
+        "companyId": { "type": "string", "description": "ID of the company this user belongs to" },
+        "assignedWeddings": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Company": {
+      "title": "Company",
+      "description": "An organization managing multiple weddings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId"]
+    },
+    "Wedding": {
+      "title": "Wedding",
+      "description": "A wedding event container",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string", "description": "ID of the company that owns this wedding" },
+        "coupleNames": { "type": "string" },
+        "date": { "type": "string" },
+        "venue": { "type": "string" },
+        "events": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "date": { "type": "string" },
+              "time": { "type": "string" },
+              "venue": { "type": "string" }
+            }
+          }
+        },
+        "adminIds": { "type": "array", "items": { "type": "string" } },
+        "teamIds": { "type": "array", "items": { "type": "string" } },
+        "clientIds": { "type": "array", "items": { "type": "string" } },
+        "creatorId": { "type": "string", "description": "UID of the person who created the wedding" },
+        "rsvpTemplate": { "type": "string", "description": "Custom WhatsApp message template for RSVP" },
+        "rsvpButtons": { "type": "array", "items": { "type": "string" }, "description": "Interactive buttons for RSVP message" },
+        "rsvpPhone": { "type": "string", "description": "WhatsApp number for RSVP replies" }
+      },
+      "required": ["coupleNames", "adminIds"]
+    },
+    "Guest": {
+      "title": "Guest",
+      "description": "A guest invited to a wedding",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string" },
+        "name": { "type": "string" },
+        "familyName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "side": { "type": "string", "enum": ["Bride", "Groom"], "description": "Main category: Bride side or Groom side" },
+        "category": { "type": "string", "enum": ["VIP", "Family", "Friends", "Corporate"], "description": "Secondary category" },
+        "rsvpStatus": { "type": "string", "enum": ["pending", "yes", "no", "maybe"] },
+        "eventAttendance": { "type": "object", "description": "Map of event name to attendance status" },
+        "guestCount": { "type": "number" },
+        "hotelId": { "type": "string" },
+        "roomId": { "type": "string", "description": "Firestore ID of the room" },
+        "roomNumber": { "type": "string", "description": "Display number of the room" },
+        "photoIdUrl": { "type": "string", "description": "URL to the guest's photo ID" },
+        "photoUrl": { "type": "string", "description": "Profile photo of the guest" },
+        "arrivalTravelMode": { "type": "string", "enum": ["Car", "Train", "Flight", "Other"] },
+        "departureTravelMode": { "type": "string", "enum": ["Car", "Train", "Flight", "Other"] },
+        "arrivalPnrNumber": { "type": "string" },
+        "arrivalFlightNo": { "type": "string" },
+        "arrivalVehicleName": { "type": "string", "description": "Name of the train or flight" },
+        "arrivalFrom": { "type": "string" },
+        "arrivalTo": { "type": "string" },
+        "departurePnrNumber": { "type": "string" },
+        "departureFlightNo": { "type": "string" },
+        "departureVehicleName": { "type": "string" },
+        "departureFrom": { "type": "string" },
+        "departureTo": { "type": "string" },
+        "arrivalDateTime": { "type": "string", "format": "date-time" },
+        "departureDateTime": { "type": "string", "format": "date-time" },
+        "arrivalCarrier": { "type": "string" },
+        "departureCarrier": { "type": "string" },
+        "transportDetails": { "type": "object" },
+        "hamperStatus": { "type": "string", "enum": ["pending", "delivered"] },
+        "waStatus": { "type": "string", "enum": ["pending", "sent", "delivered", "read"] },
+        "waSentAt": { "type": "string", "format": "date-time" },
+        "waDeliveredAt": { "type": "string", "format": "date-time" },
+        "waReadAt": { "type": "string", "format": "date-time" },
+        "callStatus": { "type": "string", "enum": ["Answered", "Not Picked Up", "Wrong Number", "Busy", "Switch Off", "Pending"] },
+        "attendanceStatus": { "type": "string", "enum": ["PENDING", "ARRIVED", "CHECKED_OUT"], "description": "Current on-site status of the guest" },
+        "remarks": { "type": "string" }
+      },
+      "required": ["weddingId", "name", "phone"]
+    },
+    "Hotel": {
+      "title": "Hotel",
+      "description": "A hotel for guest accommodation",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "contactPhone": { "type": "string" }
+      },
+      "required": ["weddingId", "name"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "A room within a hotel",
+      "type": "object",
+      "properties": {
+        "hotelId": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "roomType": { "type": "string" },
+        "capacity": { "type": "number" },
+        "status": { "type": "string", "enum": ["available", "occupied", "maintenance"] },
+        "guestIds": { "type": "array", "items": { "type": "string" } },
+        "keyStatus": { "type": "string", "enum": ["pending", "ready", "received"] },
+        "checkInStatus": { "type": "string", "enum": ["pending", "checkedIn", "checkedOut"] }
+      },
+      "required": ["hotelId", "roomNumber"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A task related to wedding planning",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "assignedTo": { "type": "string", "description": "UID of the user assigned to the task" },
+        "assignedToName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "in-progress", "completed"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "dueDate": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["weddingId", "title", "status"]
+    },
+    "FleetVehicle": {
+      "title": "FleetVehicle",
+      "description": "A vehicle in the wedding transport fleet",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string" },
+        "vehicleName": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "driverName": { "type": "string" },
+        "driverPhone": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "on-trip", "standby", "maintenance"] },
+        "capacity": { "type": "number" },
+        "remarks": { "type": "string" },
+        "startKm": { "type": "string" },
+        "endKm": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "guestName": { "type": "string" },
+        "destination": { "type": "string" },
+        "usageDate": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["weddingId", "vehicleName"]
+    }
+  },
+  "firestore": {
+    "/companies/{companyId}": { "schema": "Company", "description": "Company profiles" },
+    "/users/{uid}": { "schema": "User", "description": "User profiles" },
+    "/weddings/{weddingId}": { "schema": "Wedding", "description": "Wedding details" },
+    "/weddings/{weddingId}/guests/{guestId}": { "schema": "Guest", "description": "Guests for a specific wedding" },
+    "/weddings/{weddingId}/hotels/{hotelId}": { "schema": "Hotel", "description": "Hotels for a wedding" },
+    "/weddings/{weddingId}/hotels/{hotelId}/rooms/{roomId}": { "schema": "Room", "description": "Rooms in a hotel" },
+    "/weddings/{weddingId}/tasks/{taskId}": { "schema": "Task", "description": "Tasks for a specific wedding" },
+    "/weddings/{weddingId}/fleet/{vehicleId}": { "schema": "FleetVehicle", "description": "Vehicles for a wedding" }
+  }
+}

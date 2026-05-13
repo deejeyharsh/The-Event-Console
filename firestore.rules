@@ -1,0 +1,274 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // DEFAULT DENY
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if isGlobalAdmin();
+    }
+
+    // ===============================================================
+    // PRIMITIVES & HELPERS
+    // ===============================================================
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    
+    // Global Admin Check
+    // Super Admins
+    function isGlobalAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.get('email', '') in ['harsh.eventtadka@gmail.com', 'harsh@theeventconsole.com']) ||
+        (request.auth.token.get('email_verified', false) == true && request.auth.token.email in ['harsh.eventtadka@gmail.com', 'harsh@theeventconsole.com'])
+      );
+    }
+
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function getCompanyId() {
+      return getUserData(request.auth.uid).companyId;
+    }
+
+    function checkWeddingAdmin(data, uid) {
+      return (uid in data.get('adminIds', [])) || (data.get('creatorId', '') == uid);
+    }
+
+    function checkWeddingTeam(data, uid) {
+      return checkWeddingAdmin(data, uid) || (uid in data.get('teamIds', []));
+    }
+
+    function checkWeddingMember(data, uid) {
+      return checkWeddingTeam(data, uid) || (uid in data.get('clientIds', []));
+    }
+
+    function checkDeptPermission(data, uid, dept) {
+      return checkWeddingAdmin(data, uid) || (
+        (uid in data.get('teamIds', [])) &&
+        (dept in data.get('teamPermissions', {}).get(uid, []))
+      );
+    }
+
+    function isWeddingAdmin(weddingId) {
+      return isSignedIn() && (
+        isGlobalAdmin() || 
+        (exists(/databases/$(database)/documents/weddings/$(weddingId)) && 
+         checkWeddingAdmin(get(/databases/$(database)/documents/weddings/$(weddingId)).data, request.auth.uid))
+      );
+    }
+
+    function isOwner(weddingId) {
+      return isSignedIn() && (
+        isGlobalAdmin() || 
+        (exists(/databases/$(database)/documents/weddings/$(weddingId)) && 
+         get(/databases/$(database)/documents/weddings/$(weddingId)).data.get('creatorId', '') == request.auth.uid)
+      );
+    }
+
+    function hasDeptPermission(weddingId, dept) {
+      return isSignedIn() && (
+        isGlobalAdmin() ||
+        (exists(/databases/$(database)/documents/weddings/$(weddingId)) &&
+         checkDeptPermission(get(/databases/$(database)/documents/weddings/$(weddingId)).data, request.auth.uid, dept))
+      );
+    }
+
+    function isWeddingTeam(weddingId) {
+      return isSignedIn() && (
+        isGlobalAdmin() || 
+        (exists(/databases/$(database)/documents/weddings/$(weddingId)) && 
+         checkWeddingTeam(get(/databases/$(database)/documents/weddings/$(weddingId)).data, request.auth.uid))
+      );
+    }
+
+    function isWeddingMember(weddingId) {
+      return isSignedIn() && (
+        isGlobalAdmin() || 
+        (exists(/databases/$(database)/documents/weddings/$(weddingId)) && 
+         checkWeddingMember(get(/databases/$(database)/documents/weddings/$(weddingId)).data, request.auth.uid))
+      );
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // ===============================================================
+    // VALIDATION BLUEPRINTS
+    // ===============================================================
+    
+    function isValidUser(data) {
+      return data.uid is string && 
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['admin', 'team', 'client'] &&
+             (data.get('companyId', null) == null || data.companyId is string);
+    }
+
+    function isValidWedding(data) {
+      return data.coupleNames is string && data.coupleNames.size() <= 200 &&
+             data.adminIds is list &&
+             data.companyId is string &&
+             (data.get('creatorId', null) == null || data.creatorId is string) &&
+             (data.get('events', null) == null || data.events is list);
+    }
+
+    function isValidGuest(data) {
+      return data.name is string && data.name.size() <= 200 &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.weddingId is string;
+    }
+
+    function isValidTask(data) {
+      return data.title is string && data.title.size() <= 300 &&
+             data.weddingId is string &&
+             data.status in ['pending', 'in-progress', 'completed'] &&
+             (data.get('assignedTo', null) == null || data.assignedTo is string);
+    }
+
+    function isValidFleet(data) {
+      return data.vehicleName is string && data.vehicleName.size() <= 200 &&
+             data.weddingId is string &&
+             (data.get('status', 'available') in ['available', 'on-trip', 'standby', 'maintenance']) &&
+             (data.get('startKm', '') is string) &&
+             (data.get('endKm', '') is string) &&
+             (data.get('startTime', '') is string) &&
+             (data.get('endTime', '') is string) &&
+             (data.get('guestName', '') is string) &&
+             (data.get('destination', '') is string) &&
+             (data.get('usageDate', '') is string);
+    }
+
+    // ===============================================================
+    // COLLECTIONS
+    // ===============================================================
+
+    match /companies/{companyId} {
+      allow read: if isSignedIn() && (isGlobalAdmin() || getCompanyId() == companyId);
+      allow create: if isSignedIn() && isValidId(companyId);
+      allow update: if isSignedIn() && (isGlobalAdmin() || (existing().ownerId == request.auth.uid && companyId == companyId));
+    }
+
+    match /users/{uid} {
+      // Profiles are readable by signed in users for identification
+      allow read: if isSignedIn();
+      
+      // Users can create their own profile, or admins can create for others (team invitation)
+      allow create: if isSignedIn() && (
+        request.auth.uid == uid || isGlobalAdmin()
+      ) && isValidUser(incoming());
+      
+      // Only the owner or global admin can update
+      // Logic for update: prevent role escalation by non-admins
+      allow update: if isSignedIn() && (
+        (request.auth.uid == uid && incoming().role == existing().role && incoming().companyId == existing().companyId) || 
+        isGlobalAdmin() ||
+        (getUserData(request.auth.uid).companyId == existing().companyId && getUserData(request.auth.uid).role == 'admin')
+      ) && isValidUser(incoming());
+    }
+
+    match /weddings/{weddingId} {
+      allow get: if true; // Public for RSVP landing page start
+      allow list: if isSignedIn() && (
+        isGlobalAdmin() ||
+        resource.data.companyId == getCompanyId() ||
+        (request.auth.uid in resource.data.get('adminIds', [])) || 
+        (request.auth.uid in resource.data.get('teamIds', [])) || 
+        (request.auth.uid in resource.data.get('clientIds', []))
+      );
+      
+      allow create: if isSignedIn() && (
+        isGlobalAdmin() || (
+          incoming().companyId == getCompanyId() &&
+          incoming().creatorId == request.auth.uid &&
+          getUserData(request.auth.uid).role == 'admin'
+        )
+      ) && isValidWedding(incoming());
+      
+      allow update: if isWeddingAdmin(weddingId) && (
+        isGlobalAdmin() || (
+          // Wedding Admin can update details and access lists
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'adminIds', 'teamIds', 'clientIds', 'rsvpTemplate', 'rsvpButtons', 'rsvpPhone', 
+            'events', 'venue', 'date', 'coupleNames', 'updatedAt', 'useBusinessApi', 'checkinMessageTemplate'
+          ]) &&
+          // OWNER PATTERN ENFORCEMENT:
+          // 1. creatorId is immutable (if it exists)
+          (existing().get('creatorId', null) == null || (incoming().creatorId == existing().creatorId)) &&
+          // 2. Owner MUST remain in the adminIds list (if they exist)
+          (existing().get('creatorId', null) == null || (existing().creatorId in incoming().adminIds)) &&
+          // 3. Prevent accidental admin lockout
+          incoming().adminIds.size() >= 1
+        )
+      ) && (isGlobalAdmin() || isValidWedding(incoming()));
+      
+      allow delete: if isGlobalAdmin();
+
+      // Allow global admin to search across all guests (collection group)
+      match /{path=**}/guests/{guestId} {
+        allow list: if isGlobalAdmin();
+      }
+
+      // ----------- GUESTS -----------
+      match /guests/{guestId} {
+        allow get: if true; // Public for RSVP access
+        
+        // Secure list: users must filter by weddingId, public RSVP/Checkin requires query limit
+        allow list: if isWeddingMember(weddingId) || request.query.limit <= 2;
+        
+        allow create: if hasDeptPermission(weddingId, 'guests') && isValidGuest(incoming());
+        
+        allow update: if (
+          hasDeptPermission(weddingId, 'guests') || 
+          (hasDeptPermission(weddingId, 'hampers') && incoming().diff(existing()).affectedKeys().hasOnly(['hamperStatus', 'hamperPhotoUrl', 'updatedAt'])) ||
+          // RSVP & CheckIn self-update (limit to specific fields)
+          incoming().diff(existing()).affectedKeys().hasOnly(['rsvpStatus', 'guestCount', 'eventAttendance', 'updatedAt', 'waStatus', 'waReadAt', 'callStatus', 'remarks', 'hamperStatus', 'hamperPhotoUrl', 'attendanceStatus', 'checkInTime', 'paxDetails'])
+        ) && isValidGuest(incoming());
+        
+        allow delete: if isWeddingAdmin(weddingId);
+      }
+
+      // ----------- HOTELS -----------
+      match /hotels/{hotelId} {
+        allow read: if isWeddingMember(weddingId);
+        allow create, update: if hasDeptPermission(weddingId, 'rooms');
+        allow delete: if isWeddingAdmin(weddingId);
+
+        match /rooms/{roomId} {
+          allow read: if isWeddingMember(weddingId);
+          allow write: if hasDeptPermission(weddingId, 'rooms');
+        }
+      }
+
+      // ----------- TASKS -----------
+      match /tasks/{taskId} {
+        allow read: if isWeddingMember(weddingId);
+        allow create: if isValidId(taskId) && hasDeptPermission(weddingId, 'tasks') && isValidTask(incoming());
+        allow update: if isValidId(taskId) && isValidTask(incoming()) && (
+          // Admin/Manager Action: Update everything
+          (hasDeptPermission(weddingId, 'tasks') && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'assignedTo', 'assignedToName', 'priority', 'dueDate', 'status', 'updatedAt'])) ||
+          // Staff Action: Update status only
+          (isSignedIn() && 
+           existing().assignedTo == request.auth.uid && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        );
+        allow delete: if isValidId(taskId) && hasDeptPermission(weddingId, 'tasks');
+      }
+
+      // ----------- FLEET -----------
+      match /fleet/{vehicleId} {
+        allow read: if isWeddingMember(weddingId);
+        allow create: if hasDeptPermission(weddingId, 'transport') && isValidFleet(incoming());
+        allow update: if (
+          hasDeptPermission(weddingId, 'transport') ||
+          (isWeddingMember(weddingId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        ) && isValidFleet(incoming());
+        allow delete: if hasDeptPermission(weddingId, 'transport');
+      }
+    }
+  }
+}

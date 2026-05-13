@@ -1,0 +1,8 @@
+{
+  "name": "The Event Console",
+  "description": "A comprehensive cloud-based RSVP and guest management platform for wedding planners and clients.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
